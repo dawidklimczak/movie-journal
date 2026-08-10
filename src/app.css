@@ -1,0 +1,55 @@
+/* src/app.css */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:wght@400;600;700&display=swap');
+
+:root {
+  /* Kolory */
+  --color-primary: #E07A5F;
+  --color-primary-dark: #C45D44;
+  --color-bg: #F8F9FA;
+  --color-surface: #FFFFFF;
+  --color-text-main: #1A1A1A;
+  --color-text-muted: #64748B;
+  --color-border: #E2E8F0;
+  --color-error: #EF4444;
+
+  /* Cienie */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* Radius */
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+}
+
+html {
+  /* Ustawienie bazowego rozmiaru fontu na 87.5% (ok. 14px)
+     Sprawia, że cała aplikacja jest bardziej kompaktowa (1rem = 14px) */
+  font-size: 87.5%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', sans-serif;
+  background-color: var(--color-bg);
+  color: var(--color-text-main);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Playfair Display', serif;
+  line-height: 1.2;
+  margin: 0;
+  color: var(--color-text-main);
+}
+
+button {
+  font-family: 'Inter', sans-serif;
+}
