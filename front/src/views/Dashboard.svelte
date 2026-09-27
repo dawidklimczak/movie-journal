@@ -1,40 +1,35 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
-  import { Plus, Calendar, Star, Image as ImageIcon } from 'lucide-svelte';
+  import { createEventDispatcher, onMount } from 'svelte';
+  import { Plus, Calendar, Star, Image as ImageIcon, Loader2 } from 'lucide-svelte';
   import Button from '../components/Button.svelte';
+  import { api, formatDate } from '../lib/api.js';
 
   const dispatch = createEventDispatcher();
 
-  // Mock Data
-  let reviews = [
-    { 
-      id: 1, 
-      title: 'Dune: Part One', 
-      preview: 'Wizualnie oszałamiające dzieło. Villeneuve doskonale oddał skalę...', 
-      date: '15.01.2025',
-      year: '2021',
-      rating: 9,
-      poster: null 
-    },
-    { 
-      id: 2, 
-      title: 'The Matrix', 
-      preview: 'Rewolucyjny film. Nawet po latach efekty robią wrażenie...', 
-      date: '10.01.2025',
-      year: '1999',
-      rating: 10,
-      poster: null
-    },
-    { 
-      id: 3, 
-      title: 'Glass Onion', 
-      preview: 'Zabawny, ale pierwsza część była zdecydowanie lepsza...', 
-      date: '05.01.2025',
-      year: '2022',
-      rating: 7,
-      poster: null
+  const PREVIEW_LIMIT = 3;
+
+  let reviews = [];
+  let isLoading = true;
+  let error = null;
+
+  onMount(load);
+
+  async function load() {
+    isLoading = true;
+    error = null;
+    try {
+      const data = await api.listReviews(PREVIEW_LIMIT);
+      reviews = data.reviews;
+    } catch (err) {
+      error = err.message;
+    } finally {
+      isLoading = false;
     }
-  ];
+  }
+
+  function open(id) {
+    dispatch('view', id);
+  }
 </script>
 
 <div class="dashboard-wrapper">
@@ -61,40 +56,64 @@
       </button>
     </div>
     
-    <div class="reviews-list">
-      {#each reviews as review}
-        <div class="review-row" on:click={() => dispatch('view', review.id)}>
-          <!-- Plakat / Placeholder -->
-          <div class="poster-thumb">
-            {#if review.poster}
-              <img src={review.poster} alt={review.title} />
-            {:else}
-              <ImageIcon size={24} color="var(--color-text-muted)" />
-            {/if}
-          </div>
+    {#if isLoading}
+      <div class="state-box">
+        <Loader2 size={28} class="spinner" />
+        <p>Wczytuję recenzje...</p>
+      </div>
+    {:else if error}
+      <div class="state-box error">
+        <p>{error}</p>
+        <Button variant="secondary" size="small" on:click={load}>Spróbuj ponownie</Button>
+      </div>
+    {:else if reviews.length === 0}
+      <div class="state-box">
+        <p>Nie masz jeszcze żadnej recenzji. Pierwsza zajmie Ci około pięciu minut.</p>
+      </div>
+    {:else}
+      <div class="reviews-list">
+        {#each reviews as review (review.id)}
+          <div
+            class="review-row"
+            role="button"
+            tabindex="0"
+            on:click={() => open(review.id)}
+            on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), open(review.id))}
+          >
+            <!-- Plakat / Placeholder -->
+            <div class="poster-thumb">
+              {#if review.movie.posterUrl}
+                <img src={review.movie.posterUrl} alt="Plakat: {review.movie.title}" loading="lazy" />
+              {:else}
+                <ImageIcon size={24} color="var(--color-text-muted)" />
+              {/if}
+            </div>
 
-          <!-- Treść -->
-          <div class="review-content">
-            <div class="review-header">
-              <span class="review-title">{review.title}</span>
-              <span class="review-year">({review.year})</span>
+            <!-- Treść -->
+            <div class="review-content">
+              <div class="review-header">
+                <span class="review-title">{review.movie.title}</span>
+                {#if review.movie.year}
+                  <span class="review-year">({review.movie.year})</span>
+                {/if}
+              </div>
+              <p class="review-preview">{review.aiSummary}</p>
+              <div class="review-meta">
+                <span class="meta-date"><Calendar size={12} /> {formatDate(review.createdAt)}</span>
+              </div>
             </div>
-            <p class="review-preview">{review.preview}</p>
-            <div class="review-meta">
-              <span class="meta-date"><Calendar size={12} /> {review.date}</span>
-            </div>
-          </div>
 
-          <!-- Ocena -->
-          <div class="review-rating">
-            <div class="rating-badge">
-              <Star size={14} fill="white" stroke="none" />
-              <span>{review.rating}/10</span>
+            <!-- Ocena -->
+            <div class="review-rating">
+              <div class="rating-badge">
+                <Star size={14} fill="white" stroke="none" />
+                <span>{review.overallRating}/10</span>
+              </div>
             </div>
           </div>
-        </div>
-      {/each}
-    </div>
+        {/each}
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -162,6 +181,23 @@
     display: flex;
     flex-direction: column;
     gap: 1rem;
+  }
+
+  .state-box {
+    background: var(--color-surface);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 2.5rem 1.5rem;
+    text-align: center;
+    color: var(--color-text-muted);
+  }
+  .state-box p { margin: 0 0 0.5rem; }
+  .state-box.error { color: var(--color-error); border-color: var(--color-error); }
+  .state-box :global(.spinner) { color: var(--color-primary); margin-bottom: 0.75rem; }
+
+  .review-row:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
   }
 
   .review-row {

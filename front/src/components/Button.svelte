@@ -4,12 +4,14 @@
   export let type = 'button';
   export let disabled = false;
   export let fullWidth = false;
+  export let style = '';
 </script>
 
 <button
   {type}
   class="btn variant-{variant} size-{size}"
   class:full-width={fullWidth}
+  {style}
   {disabled}
   on:click
 >

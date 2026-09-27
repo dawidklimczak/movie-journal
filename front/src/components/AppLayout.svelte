@@ -1,12 +1,24 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
-  import { ChevronDown, User, BookOpen, LogOut, Settings } from 'lucide-svelte';
-  
+  import { createEventDispatcher, onMount } from 'svelte';
+  import { ChevronDown, BookOpen, LogOut } from 'lucide-svelte';
+  import { api } from '../lib/api.js';
+
   export let currentRoute = 'dashboard';
-  
+
   const dispatch = createEventDispatcher();
-  
+
   let isDropdownOpen = false;
+  let user = null;
+
+  onMount(async () => {
+    user = await api.me().catch(() => null);
+  });
+
+  /** "Jan Kowalski" -> "Jan K." */
+  $: shortName = user ? user.name.replace(/^(\S+)\s+(\S)\S*$/, '$1 $2.') : '';
+  $: avatarUrl = user
+    ? `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=E07A5F&color=fff`
+    : null;
 
   function navigate(route) {
     dispatch('navigate', route);
@@ -42,44 +54,34 @@
           <!-- Trigger -->
           <button class="user-trigger" on:click={toggleDropdown} class:active={isDropdownOpen}>
             <div class="user-info">
-              <span class="user-name">Jan K.</span>
+              <span class="user-name">{shortName}</span>
             </div>
-            <img 
-              src="https://ui-avatars.com/api/?name=Jan+Kowalski&background=E07A5F&color=fff" 
-              alt="User" 
-              class="avatar"
-            >
+            {#if avatarUrl}
+              <img src={avatarUrl} alt={user.name} class="avatar">
+            {:else}
+              <div class="avatar avatar-placeholder"></div>
+            {/if}
             <ChevronDown size={14} class="chevron {isDropdownOpen ? 'rotated' : ''}" />
           </button>
 
           <!-- Dropdown Menu -->
           {#if isDropdownOpen}
-            <div class="dropdown-menu" on:click|stopPropagation>
+            <div class="dropdown-menu" on:click|stopPropagation on:keydown|stopPropagation role="menu" tabindex="-1">
               <div class="dropdown-header">
-                <div class="header-name">Jan Kowalski</div>
-                <div class="header-email">jan.kowalski@example.com</div>
+                <div class="header-name">{user?.name ?? '...'}</div>
+                <div class="header-email">{user?.email ?? ''}</div>
               </div>
-              
+
               <div class="dropdown-divider"></div>
-              
-              <button class="dropdown-item" on:click={() => console.log('Moje konto')}>
-                <User size={16} />
-                <span>Moje konto</span>
-              </button>
-              
-              <button class="dropdown-item" on:click={() => navigate('all-reviews')}>
+
+              <button class="dropdown-item" class:active={currentRoute === 'all-reviews'} on:click={() => navigate('all-reviews')}>
                 <BookOpen size={16} />
                 <span>Notatki</span>
               </button>
 
-              <button class="dropdown-item" on:click={() => console.log('Ustawienia')}>
-                <Settings size={16} />
-                <span>Ustawienia</span>
-              </button>
-
               <div class="dropdown-divider"></div>
-              
-              <button class="dropdown-item danger" on:click={() => console.log('Wyloguj')}>
+
+              <button class="dropdown-item danger" on:click={() => dispatch('logout')}>
                 <LogOut size={16} />
                 <span>Wyloguj</span>
               </button>
@@ -265,9 +267,14 @@
     font-family: 'Inter', sans-serif;
   }
 
-  .dropdown-item:hover {
+  .dropdown-item:hover,
+  .dropdown-item.active {
     background: var(--color-bg);
     color: var(--color-primary);
+  }
+
+  .avatar-placeholder {
+    background: var(--color-border);
   }
 
   .dropdown-item.danger {

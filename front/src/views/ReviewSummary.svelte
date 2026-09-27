@@ -2,37 +2,35 @@
   import { createEventDispatcher, onMount } from 'svelte';
   import { CheckCircle, ArrowRight, Star, Share2 } from 'lucide-svelte';
   import Button from '../components/Button.svelte';
+  import { formatDate } from '../lib/api.js';
+  import { loadShortLabels } from '../lib/categories.js';
 
-  // Props otrzymywane z procesu GuidedReview
-  export let movieTitle = 'Dune: Part One';
-  export let aiSummary = 'Film wywarł silne wrażenie swoją warstwą wizualną i budową świata. Doceniasz grę aktorską, szczególnie w kluczowych scenach emocjonalnych. Zauważasz jednak pewne dłużyzny w narracji, które mogą wpływać na odbiór całości przez mniej cierpliwego widza.';
-  export let rating = 8;
-  export let detailedRatings = {
-      script: 7,
-      directing: 9,
-      acting: 8,
-      visuals: 10,
-      sound: 10,
-      world: 9,
-      impact: 8
-  };
+  /** Recenzja zapisana przez backend (odpowiedź POST /api/reviews). */
+  export let review;
 
   const dispatch = createEventDispatcher();
 
-  // Mapowanie kluczy na polskie etykiety
-  const categoriesMap = {
-    script: 'Scenariusz',
-    directing: 'Reżyseria',
-    acting: 'Aktorstwo',
-    visuals: 'Wizualia',
-    sound: 'Dźwięk',
-    world: 'Świat',
-    impact: 'Sens'
-  };
+  $: movieTitle = review.movie.title;
+  $: aiSummary = review.aiSummary;
+  $: rating = review.overallRating;
+  $: detailedRatings = review.detailedRatings;
 
-  onMount(() => {
+  let categoriesMap = {};
+
+  onMount(async () => {
     window.scrollTo(0, 0);
+    categoriesMap = await loadShortLabels().catch(() => ({}));
   });
+
+  async function share() {
+    const text = `${movieTitle} — ${rating}/10\n\n${aiSummary}`;
+    if (navigator.share) {
+      await navigator.share({ title: movieTitle, text }).catch(() => {});
+    } else {
+      await navigator.clipboard.writeText(text);
+      alert('Skopiowano recenzję do schowka.');
+    }
+  }
 </script>
 
 <div class="summary-wrapper">
@@ -58,7 +56,7 @@
     <div class="notebook-content">
       <div class="note-header">
         <span class="note-label">NOTATKI O FILMIE</span>
-        <span class="note-date">{new Date().toLocaleDateString('pl-PL')}</span>
+        <span class="note-date">{formatDate(review.createdAt)}</span>
       </div>
 
       <!-- Tekst notatki na liniach -->
@@ -112,7 +110,7 @@
 
   <!-- Actions -->
   <div class="actions">
-    <Button variant="secondary" size="small" on:click={() => alert('Udostępnianie...')}>
+    <Button variant="secondary" size="small" on:click={share}>
       <Share2 size={18} /> Udostępnij
     </Button>
     <Button size="medium" on:click={() => dispatch('confirm')}>

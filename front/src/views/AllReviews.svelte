@@ -1,54 +1,67 @@
 <script>
-    import { createEventDispatcher } from 'svelte';
-    import { ArrowLeft, Search, Filter, ArrowUpDown, Star, Calendar, Image as ImageIcon } from 'lucide-svelte';
+    import { createEventDispatcher, onMount } from 'svelte';
+    import { ArrowLeft, Search, Filter, ArrowUpDown, Star, Calendar, Image as ImageIcon, Loader2 } from 'lucide-svelte';
     import Button from '../components/Button.svelte';
     import Input from '../components/Input.svelte';
-  
+    import { api, formatDate } from '../lib/api.js';
+
     const dispatch = createEventDispatcher();
-  
-    // Mock Data - większy zestaw danych
-    let allReviews = [
-      { id: 1, title: 'Dune: Part One', year: '2021', rating: 9, date: '15.01.2025', genre: 'Sci-Fi', poster: null },
-      { id: 2, title: 'The Matrix', year: '1999', rating: 10, date: '10.01.2025', genre: 'Sci-Fi', poster: null },
-      { id: 3, title: 'Glass Onion', year: '2022', rating: 7, date: '05.01.2025', genre: 'Crime', poster: null },
-      { id: 4, title: 'Everything Everywhere All At Once', year: '2022', rating: 10, date: '02.01.2025', genre: 'Adventure', poster: null },
-      { id: 5, title: 'The Menu', year: '2022', rating: 8, date: '28.12.2024', genre: 'Thriller', poster: null },
-      { id: 6, title: 'Aftersun', year: '2022', rating: 9, date: '20.12.2024', genre: 'Drama', poster: null },
-    ];
-  
+
+    let allReviews = [];
+    let isLoading = true;
+    let error = null;
+
     // State
     let searchQuery = '';
     let sortBy = 'date'; // 'date', 'rating', 'title'
     let sortOrder = 'desc'; // 'asc', 'desc'
     let selectedGenre = 'all';
-  
-    // Dostępne gatunki (unikalne z listy)
-    $: genres = ['all', ...new Set(allReviews.map(r => r.genre))];
-  
-    // Logika filtrowania i sortowania
+
+    onMount(load);
+
+    async function load() {
+      isLoading = true;
+      error = null;
+      try {
+        const data = await api.listReviews();
+        allReviews = data.reviews;
+      } catch (err) {
+        error = err.message;
+      } finally {
+        isLoading = false;
+      }
+    }
+
+    // Gatunki obecne w kolekcji (TMDB nie zawsze go zwraca, stąd filtr na null)
+    $: genres = [...new Set(allReviews.map(r => r.movie.genre).filter(Boolean))].sort();
+
+    /** Klucz sortowania sprowadzony do wartości porównywalnej operatorami < / >. */
+    function sortKey(review) {
+      if (sortBy === 'rating') return review.overallRating;
+      if (sortBy === 'title') return review.movie.title.toLocaleLowerCase('pl-PL');
+      return review.createdAt; // ISO sortuje się leksykograficznie
+    }
+
     $: filteredReviews = allReviews
       .filter(r => {
-        const matchesSearch = r.title.toLowerCase().includes(searchQuery.toLowerCase());
-        const matchesGenre = selectedGenre === 'all' || r.genre === selectedGenre;
+        const matchesSearch = r.movie.title.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesGenre = selectedGenre === 'all' || r.movie.genre === selectedGenre;
         return matchesSearch && matchesGenre;
       })
       .sort((a, b) => {
-        let valA = a[sortBy];
-        let valB = b[sortBy];
-  
-        // Konwersja daty dla poprawnego sortowania (DD.MM.YYYY -> YYYY-MM-DD)
-        if (sortBy === 'date') {
-          valA = a.date.split('.').reverse().join('-');
-          valB = b.date.split('.').reverse().join('-');
-        }
-  
+        const valA = sortKey(a);
+        const valB = sortKey(b);
         if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
         if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
         return 0;
       });
-  
+
     function toggleSortOrder() {
       sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+    }
+
+    function open(id) {
+      dispatch('view', id);
     }
   </script>
   
@@ -93,7 +106,7 @@
           <Filter size={16} class="control-icon" />
           <select bind:value={selectedGenre}>
             <option value="all">Wszystkie gatunki</option>
-            {#each genres.slice(1) as genre}
+            {#each genres as genre}
               <option value={genre}>{genre}</option>
             {/each}
           </select>
@@ -104,48 +117,76 @@
   
     <!-- List Section -->
     <div class="reviews-list">
-      <div class="list-meta">
-        Znaleziono: {filteredReviews.length}
-      </div>
-  
-      {#if filteredReviews.length === 0}
+      {#if isLoading}
         <div class="empty-state">
-          <p>Brak wyników spełniających kryteria.</p>
-          <Button variant="ghost" size="small" on:click={() => {searchQuery=''; selectedGenre='all';}}>Wyczyść filtry</Button>
+          <Loader2 size={28} class="spinner" />
+          <p>Wczytuję kolekcję...</p>
+        </div>
+      {:else if error}
+        <div class="empty-state error">
+          <p>{error}</p>
+          <Button variant="secondary" size="small" on:click={load}>Spróbuj ponownie</Button>
         </div>
       {:else}
-        {#each filteredReviews as review}
-          <div class="review-row" on:click={() => dispatch('view', review.id)}>
-            <!-- Poster Thumbnail -->
-            <div class="poster-thumb">
-              {#if review.poster}
-                <img src={review.poster} alt={review.title} />
-              {:else}
-                <ImageIcon size={20} color="var(--color-text-muted)" />
-              {/if}
-            </div>
-  
-            <!-- Content -->
-            <div class="review-content">
-              <div class="review-main-info">
-                <span class="review-title">{review.title}</span>
-                <span class="review-year">({review.year})</span>
-              </div>
-              <div class="review-sub-info">
-                <span class="genre-tag">{review.genre}</span>
-                <span class="date-tag"><Calendar size={12} /> {review.date}</span>
-              </div>
-            </div>
-  
-            <!-- Rating -->
-            <div class="review-rating">
-              <div class="rating-badge" class:high-score={review.rating >= 8} class:mid-score={review.rating < 8 && review.rating >= 5}>
-                <Star size={12} fill="white" stroke="none" />
-                <span>{review.rating}</span>
-              </div>
-            </div>
+        <div class="list-meta">
+          Znaleziono: {filteredReviews.length}
+        </div>
+
+        {#if filteredReviews.length === 0}
+          <div class="empty-state">
+            <p>
+              {allReviews.length === 0
+                ? 'Nie masz jeszcze żadnej recenzji.'
+                : 'Brak wyników spełniających kryteria.'}
+            </p>
+            {#if allReviews.length > 0}
+              <Button variant="ghost" size="small" on:click={() => {searchQuery=''; selectedGenre='all';}}>Wyczyść filtry</Button>
+            {/if}
           </div>
-        {/each}
+        {:else}
+          {#each filteredReviews as review (review.id)}
+            <div
+              class="review-row"
+              role="button"
+              tabindex="0"
+              on:click={() => open(review.id)}
+              on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), open(review.id))}
+            >
+              <!-- Poster Thumbnail -->
+              <div class="poster-thumb">
+                {#if review.movie.posterUrl}
+                  <img src={review.movie.posterUrl} alt="Plakat: {review.movie.title}" loading="lazy" />
+                {:else}
+                  <ImageIcon size={20} color="var(--color-text-muted)" />
+                {/if}
+              </div>
+
+              <!-- Content -->
+              <div class="review-content">
+                <div class="review-main-info">
+                  <span class="review-title">{review.movie.title}</span>
+                  {#if review.movie.year}
+                    <span class="review-year">({review.movie.year})</span>
+                  {/if}
+                </div>
+                <div class="review-sub-info">
+                  {#if review.movie.genre}
+                    <span class="genre-tag">{review.movie.genre}</span>
+                  {/if}
+                  <span class="date-tag"><Calendar size={12} /> {formatDate(review.createdAt)}</span>
+                </div>
+              </div>
+
+              <!-- Rating -->
+              <div class="review-rating">
+                <div class="rating-badge" class:high-score={review.overallRating >= 8} class:mid-score={review.overallRating < 8 && review.overallRating >= 5}>
+                  <Star size={12} fill="white" stroke="none" />
+                  <span>{review.overallRating}</span>
+                </div>
+              </div>
+            </div>
+          {/each}
+        {/if}
       {/if}
     </div>
   </div>
@@ -341,6 +382,13 @@
       text-align: center;
       padding: 3rem;
       color: var(--color-text-muted);
+    }
+    .empty-state.error { color: var(--color-error); }
+    .empty-state :global(.spinner) { color: var(--color-primary); margin-bottom: 0.75rem; }
+
+    .review-row:focus-visible {
+      outline: 2px solid var(--color-primary);
+      outline-offset: 2px;
     }
   
     @keyframes fadeIn {

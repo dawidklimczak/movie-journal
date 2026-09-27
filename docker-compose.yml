@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: moviejournal
+      POSTGRES_PASSWORD: moviejournal
+      POSTGRES_DB: moviejournal
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U moviejournal']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: ./backend
+    environment:
+      PORT: 3000
+      # Obecność DATABASE_URL przełącza backend z SQLite na Postgresa.
+      DATABASE_URL: postgres://moviejournal:moviejournal@db:5432/moviejournal
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-nano}
+      TMDB_API_KEY: ${TMDB_API_KEY}
+      TMDB_ACCESS_TOKEN: ${TMDB_ACCESS_TOKEN}
+      TMDB_LANGUAGE: ${TMDB_LANGUAGE:-pl-PL}
+      SINGLE_USER_EMAIL: ${SINGLE_USER_EMAIL:-jan.kowalski@example.com}
+      SINGLE_USER_NAME: ${SINGLE_USER_NAME:-Jan Kowalski}
+    ports:
+      - '3000:3000'
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

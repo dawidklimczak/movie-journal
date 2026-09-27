@@ -53,3 +53,12 @@ h1, h2, h3, h4, h5, h6 {
 button {
   font-family: 'Inter', sans-serif;
 }
+
+/* Ikona ładowania (lucide Loader2) — używana w kilku widokach. */
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

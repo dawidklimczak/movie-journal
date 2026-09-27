@@ -1,97 +1,95 @@
 <script>
-  import { createEventDispatcher, tick } from 'svelte';
-  import { ArrowLeft, MessageSquare, Star, Send, Check } from 'lucide-svelte';
+  import { createEventDispatcher, onMount, tick } from 'svelte';
+  import { ArrowLeft, MessageSquare, Star, Send, Check, Loader2, RotateCcw } from 'lucide-svelte';
   import Button from '../components/Button.svelte';
+  import { api } from '../lib/api.js';
+  import { loadCategories } from '../lib/categories.js';
 
-  export let movieId;
+  /** Obiekt filmu z wyszukiwarki: { tmdbId, title, year, director, genre, posterUrl }. */
+  export let movie;
+
   const dispatch = createEventDispatcher();
 
-  // --- STATE ---
-  let step = 1; // 1: Ratings, 2: Chat
-  let movieTitle = 'Dune: Part One'; 
+  let step = 1; // 1: oceny, 2: rozmowa
+  $: movieTitle = movie?.title ?? '';
 
   // --- KROK 1: OCENY ---
   let overallRating = 5;
-  const categories = [
-    { id: 'script', label: 'Scenariusz i struktura', desc: 'Czy historia jest logiczna, dobrze zbudowana i sensownie poprowadzona w czasie.' },
-    { id: 'directing', label: 'Reżyseria i narracja', desc: 'Jak reżyser prowadzi widza: tempo, decyzje inscenizacyjne, kontrola tonu.' },
-    { id: 'acting', label: 'Postacie i aktorstwo', desc: 'Na ile bohaterowie są wiarygodni, a aktorstwo wspiera historię.' },
-    { id: 'visuals', label: 'Język filmowy (kamera + montaż)', desc: 'Jak obraz i montaż opowiadają historię: kadry, ruch kamery, rytm scen.' },
-    { id: 'sound', label: 'Dźwięk i muzyka', desc: 'Czy dźwięk, cisza i muzyka wzmacniają narrację, a nie tylko ją ilustrują.' },
-    { id: 'world', label: 'Świat przedstawiony', desc: 'Czy otoczenie filmu jest spójne, wiarygodne i wspiera opowieść (scenografia, kostiumy, VFX).' },
-    { id: 'impact', label: 'Oddziaływanie i sens', desc: 'Co film robi z widzem i co po nim zostaje: emocje, myśli, interpretacje.' }
-  ];
-
+  let categories = [];
   let detailedRatings = {};
-  categories.forEach(c => detailedRatings[c.id] = 5);
+  let categoriesError = null;
 
-  function goToChat() {
-    step = 2;
-    setTimeout(() => {
-      addAiMessage(`Cześć! Widzę, że oceniłeś "${movieTitle}" na ${overallRating}/10. Opowiedz mi, jakie są Twoje ogólne wrażenia po seansie?`);
-    }, 500);
-  }
+  onMount(async () => {
+    try {
+      categories = await loadCategories();
+      detailedRatings = Object.fromEntries(categories.map((c) => [c.id, 5]));
+    } catch (err) {
+      categoriesError = err.message;
+    }
+  });
 
-  // --- KROK 2: CZAT ---
+  // --- KROK 2: ROZMOWA ---
   let chatContainer;
   let chatInput = '';
   let textareaRef;
   let isTyping = false;
   let messages = [];
   let isFinalQuestion = false;
+  let chatError = null;
+  let isSaving = false;
+
+  /** Payload wspólny dla /api/chat/next i zapisu recenzji. */
+  function reviewPayload() {
+    return { movie, overallRating, detailedRatings, messages };
+  }
 
   async function scrollToBottom() {
     await tick();
-    if (chatContainer) {
-      chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
+    chatContainer?.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
+  }
+
+  /** Woła AI o kolejne pytanie na podstawie całej dotychczasowej rozmowy. */
+  async function requestAiTurn() {
+    isTyping = true;
+    chatError = null;
+    scrollToBottom();
+
+    try {
+      const reply = await api.nextChatMessage(reviewPayload());
+      messages = [...messages, { role: 'ai', text: reply.message }];
+      isFinalQuestion = reply.isFinal;
+    } catch (err) {
+      chatError = err.message;
+    } finally {
+      isTyping = false;
+      scrollToBottom();
     }
   }
 
-  function addAiMessage(text, isFinal = false) {
-    isTyping = true;
-    scrollToBottom(); // Scroll to show typing indicator
-    
-    setTimeout(() => {
-      messages = [...messages, { role: 'ai', text }];
-      isTyping = false;
-      if (isFinal) {
-        isFinalQuestion = true;
-      }
-      scrollToBottom(); // Scroll to show new message
-    }, 1000 + Math.random() * 1000);
+  function goToChat() {
+    step = 2;
+    requestAiTurn();
   }
 
   function resizeTextarea() {
     if (textareaRef) {
-      textareaRef.style.height = 'auto'; 
+      textareaRef.style.height = 'auto';
       textareaRef.style.height = `${textareaRef.scrollHeight}px`;
     }
   }
 
   async function addUserMessage() {
-    if (!chatInput.trim()) return;
-    
-    if (isFinalQuestion) isFinalQuestion = false; 
+    if (!chatInput.trim() || isTyping) return;
 
-    const text = chatInput;
-    messages = [...messages, { role: 'user', text }];
+    isFinalQuestion = false;
+    messages = [...messages, { role: 'user', text: chatInput.trim() }];
     chatInput = '';
-    
-    // Reset textarea
+
     await tick();
     if (textareaRef) textareaRef.style.height = 'auto';
-    
-    scrollToBottom(); // Scroll to show user message
+    scrollToBottom();
 
-    // Logic
-    const userMsgCount = messages.filter(m => m.role === 'user').length;
-    if (userMsgCount === 1) {
-      addAiMessage("Rozumiem. A co myślisz o zakończeniu? Czy było satysfakcjonujące?");
-    } else if (userMsgCount === 2) {
-      addAiMessage("Ciekawe spostrzeżenie. Czy jest jakaś scena, która szczególnie zapadła Ci w pamięć?");
-    } else {
-      addAiMessage("Dzięki za tę uwagę. Czy to już wszystkie Twoje przemyślenia, czy chcesz dodać coś jeszcze?", true);
-    }
+    await requestAiTurn();
   }
 
   function handleKeydown(e) {
@@ -101,14 +99,18 @@
     }
   }
 
-  function finishReview() {
-    dispatch('finish', {
-      movieTitle: movieTitle,
-      rating: overallRating,
-      detailedRatings: detailedRatings,
-      chatHistory: messages,
-      aiSummary: "Film wywarł silne wrażenie swoją warstwą wizualną i budową świata. Doceniasz grę aktorską, szczególnie w kluczowych scenach emocjonalnych."
-    });
+  async function finishReview() {
+    if (isSaving) return;
+    isSaving = true;
+    chatError = null;
+
+    try {
+      const saved = await api.createReview(reviewPayload());
+      dispatch('finish', saved);
+    } catch (err) {
+      chatError = err.message;
+      isSaving = false;
+    }
   }
 </script>
 
@@ -124,7 +126,10 @@
           <span class="chat-title">Rozmowa o filmie</span>
           <span class="chat-subtitle">{movieTitle}</span>
        </div>
-       <div style="width: 24px;"></div>
+       <!-- Rozmowę można zamknąć w każdej chwili, nie tylko gdy AI sama zaproponuje koniec. -->
+       <Button variant="ghost" size="small" disabled={isSaving || isTyping} on:click={finishReview}>
+         Zakończ
+       </Button>
     {/if}
   </div>
 
@@ -143,16 +148,22 @@
       </div>
       <div class="detailed-ratings">
         <h3>Szczegóły (opcjonalne)</h3>
-        {#each categories as cat}
-          <div class="category-item">
-            <div class="cat-header">
-              <span class="cat-label">{cat.label}</span>
-              <span class="cat-score">{detailedRatings[cat.id]}/10</span>
+        {#if categoriesError}
+          <p class="inline-error">Nie udało się pobrać kategorii ocen: {categoriesError}</p>
+        {:else if categories.length === 0}
+          <p class="cat-desc">Wczytuję kategorie...</p>
+        {:else}
+          {#each categories as cat}
+            <div class="category-item">
+              <div class="cat-header">
+                <span class="cat-label">{cat.label}</span>
+                <span class="cat-score">{detailedRatings[cat.id]}/10</span>
+              </div>
+              <p class="cat-desc">{cat.desc}</p>
+              <input type="range" min="1" max="10" bind:value={detailedRatings[cat.id]} class="rating-slider small-slider">
             </div>
-            <p class="cat-desc">{cat.desc}</p>
-            <input type="range" min="1" max="10" bind:value={detailedRatings[cat.id]} class="rating-slider small-slider">
-          </div>
-        {/each}
+          {/each}
+        {/if}
       </div>
       <div class="step-footer">
         <Button fullWidth size="large" on:click={goToChat}>
@@ -180,29 +191,43 @@
             </div>
           </div>
         {/if}
-        
+
+        {#if chatError}
+          <div class="chat-error">
+            <span>{chatError}</span>
+            <button class="retry-btn" on:click={requestAiTurn}>
+              <RotateCcw size={14} /> Ponów
+            </button>
+          </div>
+        {/if}
+
         <div class="spacer" style="height: 20px;"></div>
       </div>
 
       <div class="chat-input-bar">
-        {#if isFinalQuestion}
+        {#if isFinalQuestion && !isTyping}
           <div class="quick-actions">
-            <button class="quick-btn" on:click={finishReview}>
-              <Check size={16} /> Nie, to już wszystko
+            <button class="quick-btn" on:click={finishReview} disabled={isSaving}>
+              {#if isSaving}
+                <Loader2 size={16} class="spinner" /> Zapisuję recenzję...
+              {:else}
+                <Check size={16} /> Nie, to już wszystko
+              {/if}
             </button>
           </div>
         {/if}
         <div class="chat-input-content">
           <div class="input-wrapper">
-            <textarea 
+            <textarea
               bind:this={textareaRef}
-              placeholder="Napisz wiadomość..." 
+              placeholder={isTyping ? 'AI pisze...' : 'Napisz wiadomość...'}
               rows="1"
+              disabled={isSaving}
               bind:value={chatInput}
               on:keydown={handleKeydown}
               on:input={resizeTextarea}
             ></textarea>
-            <button class="send-btn" on:click={addUserMessage} disabled={!chatInput.trim()}>
+            <button class="send-btn" on:click={addUserMessage} disabled={!chatInput.trim() || isTyping || isSaving}>
               <Send size={20} />
             </button>
           </div>
@@ -271,9 +296,17 @@
     max-height: calc(100vh - 140px);
   }
   
-  .chat-header-info { display: flex; flex-direction: column; align-items: center; width: 100%; }
+  .chat-header-info { display: flex; flex-direction: column; align-items: center; flex: 1; min-width: 0; }
   .chat-title { font-weight: 600; font-size: 0.8rem; color: var(--color-text-muted); text-transform: uppercase; }
-  .chat-subtitle { font-family: 'Playfair Display', serif; font-weight: 700; font-size: 1.1rem; }
+  .chat-subtitle {
+    font-family: 'Playfair Display', serif;
+    font-weight: 700;
+    font-size: 1.1rem;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
   .chat-messages {
     flex: 1;
@@ -308,6 +341,42 @@
   textarea { flex: 1; border: none; background: transparent; padding: 0; font-family: inherit; font-size: 1rem; resize: none; outline: none; line-height: 1.5; color: var(--color-text-main); max-height: 150px; overflow-y: auto; }
   .send-btn { background: var(--color-primary); color: white; border: none; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s; flex-shrink: 0; }
   .send-btn:disabled { background: var(--color-border); cursor: default; }
+
+  .inline-error { color: var(--color-error); font-size: 0.9rem; padding: 0 0.5rem; }
+
+  .chat-error {
+    align-self: center;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    background: #FFF5F5;
+    border: 1px solid var(--color-error);
+    color: var(--color-error);
+    border-radius: var(--radius-md);
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+    text-align: center;
+  }
+
+  .retry-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: var(--color-error);
+    color: white;
+    border: none;
+    border-radius: var(--radius-full);
+    padding: 0.35rem 0.9rem;
+    font-family: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .quick-btn:disabled { opacity: 0.7; cursor: default; transform: none; }
+  textarea:disabled { opacity: 0.6; }
 
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   @media(min-width: 768px) {
