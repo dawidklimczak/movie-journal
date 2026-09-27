@@ -1,5 +1,7 @@
 # MovieJournal
 
+> **Work in progress.** This is a personal side project, not a finished or maintained product — expect rough edges and missing pieces.
+
 A movie journal that turns a five-minute post-watch chat into a structured review — instead of a blank text box.
 
 ## The idea
